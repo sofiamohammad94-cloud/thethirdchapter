@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Third Chapter · Book Club</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Cormorant+Garamond:wght@300;400;600&display=swap" rel="stylesheet"/>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { min-height: 100vh; }
+    body { background: #0E0802; color: #F2E8D0; font-family: 'Cormorant Garamond', Georgia, serif; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #1C120A; }
+    ::-webkit-scrollbar-thumb { background: #4A3020; border-radius: 3px; }
+    input, textarea, select { font-family: inherit; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .fade-in { animation: fadeIn .3s ease forwards; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SYNC CONFIG  —  JSONBin.io (100% free, no credit card ever)
+     ───────────────────────────────────────────────────────────────────────────
+     SETUP (2 minutes):
+       1. Go to https://jsonbin.io  →  Sign Up (just email, no card)
+       2. Account Settings  →  API Keys  →  Create Master Key  →  copy it
+       3. Bins (left sidebar)  →  Create Bin  →  paste {}  →  Create
+       4. Copy the Bin ID from the URL or bin header
+       5. Paste both values below, save index.html, push to GitHub, deploy!
+     ─────────────────────────────────────────────────────────────────────── -->
+<script>
+const JSONBIN = {
+  binId:  "69c4a667b7ec241ddca41266",
+  key:    "$2a$10$V0UgVfQPCVrN5gRv5..ey.Nn4yRTegsL8Gd2.ELVhjWebU8ogAbv."
+};
+
+const BASE = "https://api.jsonbin.io/v3/b";
+
+window.cloudStorage = {
+  isCloud: !!(JSONBIN.binId && JSONBIN.key),
+
+  async read() {
+    if (!this.isCloud) return JSON.parse(localStorage.getItem("ttc-data") || "null");
+    const r = await fetch(`${BASE}/${JSONBIN.binId}/latest`, {
+      headers: { "X-Master-Key": JSONBIN.key }
+    });
+    if (!r.ok) throw new Error("read failed");
+    const j = await r.json();
+    return j.record;
+  },
+
+  async write(data) {
+    if (!this.isCloud) { localStorage.setItem("ttc-data", JSON.stringify(data)); return; }
+    await fetch(`${BASE}/${JSONBIN.binId}`, {
+      method: "PUT",
+      headers: { "X-Master-Key": JSONBIN.key, "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  }
+};
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MEMBERS = ["Sofia", "Maya", "Sanghamitra"];
+const MC = {
+  Sofia:       { bg: "#C4623A", dim: "#7A2E10" },
+  Maya:        { bg: "#7A4E6E", dim: "#4A2248" },
+  Sanghamitra: { bg: "#4A7C59", dim: "#2A4A38" },
+};
+const GENRES = ["Fiction","Literary Fiction","Non-Fiction","Mystery & Thriller",
+  "Romance","Sci-Fi","Fantasy","Historical Fiction","Biography & Memoir",
+  "Self-Help","Short Stories","Poetry","Other"];
+const TABS = [
+  { id:"home",      label:"Home",        icon:"✦" },
+  { id:"current",   label:"Now Reading", icon:"📖" },
+  { id:"queue",     label:"Up Next",     icon:"📚" },
+  { id:"bookshelf", label:"Bookshelf",   icon:"🏛️" },
+];
+const DEFAULT = { currentRead: null, queue: [], bookshelf: [] };
+const BOOK_PALETTE = ["#C4623A","#7A4E6E","#4A7C59","#C9932A","#5A7EA0","#8B4A1C","#6B5B95"];
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+async function fetchCover(title, author) {
+  try {
+    const q = encodeURIComponent(`intitle:${title}${author?` inauthor:${author}`:""}`);
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1&fields=items(volumeInfo(imageLinks))`);
+    const d = await r.json();
+    const t = d.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
+    return t ? t.replace("http://","https://") : null;
+  } catch { return null; }
+}
+
+function countdown(startDate) {
+  const start = new Date(startDate);
+  const target = new Date(start.getTime() + 30*24*60*60*1000);
+  const now = new Date();
+  const daysLeft = Math.ceil((target - now)/(24*60*60*1000));
+  const progress = Math.min(1, Math.max(0, (now-start)/(30*24*60*60*1000)));
+  return { daysLeft, progress, overdue: daysLeft < 0, target };
+}
+
+function cdColor(daysLeft) {
+  if (daysLeft > 20) return "#4A7C59";
+  if (daysLeft > 10) return "#C9A030";
+  if (daysLeft > 3)  return "#C4623A";
+  return "#C4303A";
+}
+
+// ─── Small components ─────────────────────────────────────────────────────────
+function Stars({ value, onChange, readonly=false, size=20 }) {
+  const [hov, setHov] = useState(0);
+  return (
+    <div style={{display:"flex",gap:2,cursor:readonly?"default":"pointer"}}>
+      {[1,2,3,4,5].map(s=>(
+        <span key={s} style={{fontSize:size,color:s<=(hov||value||0)?"#C9A030":"#5A3A20",
+          transition:"color .12s",opacity:s<=(hov||value||0)?1:0.28}}
+          onMouseEnter={()=>!readonly&&setHov(s)} onMouseLeave={()=>!readonly&&setHov(0)}
+          onClick={()=>!readonly&&onChange&&onChange(s===value?0:s)}>★</span>
+      ))}
+    </div>
+  );
+}
+
+function Avg({ ratings={} }) {
+  const v = Object.values(ratings).filter(x=>x>0);
+  if (!v.length) return <span style={{color:"#6A4A30",fontSize:12}}>No ratings</span>;
+  const a = (v.reduce((a,b)=>a+b,0)/v.length).toFixed(1);
+  return <span style={{color:"#C9A030",fontSize:13,fontWeight:600}}>★ {a}
+    <span style={{color:"#8A6A40",fontWeight:400,fontSize:11}}> ({v.length})</span></span>;
+}
+
+function GenrePill({ genre, small=false, onClick, active=false }) {
+  if (!genre) return null;
+  return (
+    <span onClick={onClick} style={{
+      display:"inline-block",fontSize:small?10:11,
+      background:active?"#C9A03030":"#2A1C0E",
+      color:active?"#C9A030":"#9A7A50",
+      border:`1px solid ${active?"#C9A03060":"#4A3020"}`,
+      borderRadius:20,padding:small?"1px 8px":"2px 10px",
+      letterSpacing:.4,cursor:onClick?"pointer":"default",transition:"all .15s",
+      whiteSpace:"nowrap"
+    }}>{genre}</span>
+  );
+}
+
+function CoverImg({ url, color, size=60 }) {
+  const [err, setErr] = useState(false);
+  if (url && !err) return (
+    <img src={url} onError={()=>setErr(true)}
+      style={{width:size,height:size*1.4,objectFit:"cover",borderRadius:4,
+        boxShadow:"2px 3px 10px rgba(0,0,0,.5)",flexShrink:0}} alt="cover"/>
+  );
+  return (
+    <div style={{width:size,height:size*1.4,borderRadius:4,background:color||"#4A3020",
+      flexShrink:0,boxShadow:"2px 3px 10px rgba(0,0,0,.4)",
+      display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38}}>📘</div>
+  );
+}
+
+function Countdown({ startDate }) {
+  const { daysLeft, progress, overdue, target } = countdown(startDate);
+  const col = cdColor(daysLeft);
+  const fmt = target.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  return (
+    <div style={{marginTop:14,background:"#160E0580",borderRadius:10,padding:"12px 16px",border:"1px solid #3A2A18"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:11,letterSpacing:2,color:"#8A6A40",textTransform:"uppercase"}}>
+          {overdue?"Overdue!":"Reading Deadline"}
+        </span>
+        <span style={{fontSize:12,color:col,fontWeight:600}}>
+          {overdue?`${Math.abs(daysLeft)}d overdue`:`${daysLeft} day${daysLeft!==1?"s":""} left`}
+          <span style={{color:"#6A4A30",fontWeight:400}}> · {fmt}</span>
+        </span>
+      </div>
+      <div style={{background:"#2A1C0E",borderRadius:4,height:5,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${progress*100}%`,background:col,
+          borderRadius:4,transition:"width .5s"}}/>
+      </div>
+      {overdue && <div style={{fontSize:11,color:"#C4303A",marginTop:6,fontStyle:"italic"}}>
+        Don't worry — quality over speed! 📚</div>}
+    </div>
+  );
+}
+
+// ─── Add Book Modal ───────────────────────────────────────────────────────────
+function AddModal({ currentUser, onAdd, onClose }) {
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [genre, setGenre] = useState("");
+  const [cover, setCover] = useState(null);
+  const [fetchingCover, setFetchingCover] = useState(false);
+  const debounce = useRef(null);
+
+  async function doFetchCover(t, a) {
+    if (!t.trim()) return;
+    setFetchingCover(true);
+    const url = await fetchCover(t, a);
+    setCover(url);
+    setFetchingCover(false);
+  }
+
+  function onTitleBlur() {
+    clearTimeout(debounce.current);
+    if (title.trim()) debounce.current = setTimeout(()=>doFetchCover(title,author), 400);
+  }
+  function onAuthorBlur() {
+    clearTimeout(debounce.current);
+    if (title.trim()) debounce.current = setTimeout(()=>doFetchCover(title,author), 400);
+  }
+
+  const inp = {background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,color:"#F2E8D0",
+    padding:"9px 12px",fontSize:14,outline:"none",width:"100%",transition:"border-color .2s"};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div className="fade-in" style={{background:"linear-gradient(135deg,#2E1E0C,#231508)",
+        border:"1px solid #6A4A20",borderRadius:16,padding:26,width:"100%",maxWidth:440,
+        boxShadow:"0 20px 60px rgba(0,0,0,.65)"}} onClick={e=>e.stopPropagation()}>
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,color:"#F2E8D0",fontWeight:700}}>Add to Queue</div>
+            <div style={{fontSize:12,color:"#9A7A50",marginTop:2}}>
+              Suggested by <span style={{color:MC[currentUser]?.bg}}>{currentUser}</span>
+            </div>
+          </div>
+          {/* Cover preview */}
+          <div style={{width:50,height:70,borderRadius:6,background:"#2A1C0E",border:"1px solid #4A3020",
+            overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {fetchingCover
+              ? <span style={{fontSize:10,color:"#6A4A30",textAlign:"center",padding:4,animation:"pulse 1s infinite"}}>finding cover…</span>
+              : cover
+                ? <img src={cover} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setCover(null)}/>
+                : <span style={{fontSize:20}}>📗</span>}
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Book Title *</label>
+            <input value={title} onChange={e=>setTitle(e.target.value)} onBlur={onTitleBlur}
+              placeholder="e.g. The God of Small Things" style={inp} autoFocus
+              onFocus={e=>e.target.style.borderColor="#C9A030"} />
+          </div>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Author</label>
+            <input value={author} onChange={e=>setAuthor(e.target.value)} onBlur={onAuthorBlur}
+              placeholder="e.g. Arundhati Roy" style={inp}
+              onFocus={e=>e.target.style.borderColor="#C9A030"}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Genre</label>
+            <select value={genre} onChange={e=>setGenre(e.target.value)}
+              style={{...inp,background:"#160E05",cursor:"pointer"}}>
+              <option value="">Select genre…</option>
+              {GENRES.map(g=><option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:9,marginTop:20}}>
+          <button onClick={()=>{if(title.trim()){onAdd(title.trim(),author.trim()||"Unknown",genre,cover);onClose();}}}
+            disabled={!title.trim()} style={{flex:1,background:title.trim()?"#C9A030":"#3A2A18",border:"none",
+              color:title.trim()?"#1C120A":"#6A5030",borderRadius:10,padding:12,
+              cursor:title.trim()?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>Add Book ✓</button>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #5A3A20",
+            color:"#9A7A50",borderRadius:10,padding:"12px 18px",cursor:"pointer",fontSize:14}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mark Read Modal ──────────────────────────────────────────────────────────
+function MarkReadModal({ book, currentUser, onConfirm, onClose }) {
+  const [rating, setRating] = useState(0);
+  const [note, setNote]   = useState("");
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:200,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div className="fade-in" style={{background:"linear-gradient(135deg,#2E1E0C,#231508)",
+        border:"1px solid #6A4A20",borderRadius:16,padding:26,width:"100%",maxWidth:420,
+        boxShadow:"0 20px 60px rgba(0,0,0,.65)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:30,textAlign:"center",marginBottom:10}}>🎉</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:"#F2E8D0",
+          fontWeight:700,textAlign:"center",marginBottom:4}}>Finished it!</div>
+        <div style={{fontSize:13,color:"#9A7A50",textAlign:"center",marginBottom:20}}>
+          <em>"{book.title}"</em></div>
+
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10,textAlign:"center"}}>
+            Your Rating, {currentUser}</div>
+          <div style={{display:"flex",justifyContent:"center"}}><Stars value={rating} onChange={setRating} size={30}/></div>
+        </div>
+
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Your Notes <span style={{opacity:.5}}>(visible to all)</span></div>
+          <textarea value={note} onChange={e=>setNote(e.target.value)}
+            placeholder="First impressions, favourite quote, how it made you feel…"
+            rows={3} style={{background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,
+              color:"#F2E8D0",padding:"9px 12px",fontSize:13,resize:"vertical",
+              outline:"none",width:"100%",fontFamily:"inherit"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:9}}>
+          <button onClick={()=>onConfirm(rating, note)} style={{flex:1,background:"#4A7C59",border:"none",
+            color:"#E8F3EC",borderRadius:10,padding:12,cursor:"pointer",fontSize:14,fontWeight:700}}>
+            Move to Bookshelf 📚</button>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #5A3A20",
+            color:"#9A7A50",borderRadius:10,padding:"12px 16px",cursor:"pointer",fontSize:14}}>Not yet</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Queue Card ───────────────────────────────────────────────────────────────
+function QueueCard({ book, onMakeCurrent, onRemove }) {
+  const col = MC[book.suggestedBy] || MC.Sofia;
+  const [hov, setHov] = useState(false);
+  return (
+    <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+      border:`1px solid ${hov?"#C9A030":"#4A3020"}`,borderRadius:12,
+      padding:"15px 17px",display:"flex",alignItems:"center",gap:14,transition:"border-color .2s"}}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>
+      <CoverImg url={book.coverUrl} color={BOOK_PALETTE[book.id % BOOK_PALETTE.length]} size={44}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#F2E8D0",fontWeight:700,
+          marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{book.title}</div>
+        <div style={{fontSize:12,color:"#9A7A50",marginBottom:6}}>{book.author}</div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:11,background:col.bg+"28",color:col.bg,border:`1px solid ${col.bg}40`,
+            borderRadius:20,padding:"1px 8px"}}>by {book.suggestedBy}</span>
+          {book.genre && <GenrePill genre={book.genre} small/>}
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:7,flexShrink:0}}>
+        <button onClick={()=>onMakeCurrent(book)} style={{background:"#C9A030",border:"none",color:"#1C120A",
+          borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>📖 Read Now</button>
+        <button onClick={()=>onRemove(book.id)} style={{background:"transparent",border:"1px solid #5A3A20",
+          color:"#8A6A40",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:12}}>Remove</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bookshelf Card ───────────────────────────────────────────────────────────
+function ShelfCard({ book, currentUser, onRate, onSaveNote }) {
+  const [open, setOpen] = useState(false);
+  const [editNote, setEditNote] = useState(false);
+  const [myNote, setMyNote] = useState(book.notes?.[currentUser]||"");
+  const [hov, setHov] = useState(false);
+  const bg = BOOK_PALETTE[book.id % BOOK_PALETTE.length];
+  return (
+    <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+      border:`1px solid ${hov?"#C9A030":"#4A3020"}`,borderRadius:12,overflow:"hidden",transition:"border-color .2s"}}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>
+      <div style={{padding:"15px 17px",display:"flex",gap:14,alignItems:"flex-start"}}>
+        <CoverImg url={book.coverUrl} color={bg} size={46}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:"#F2E8D0",fontWeight:700,marginBottom:2}}>{book.title}</div>
+          <div style={{fontSize:12,color:"#9A7A50",marginBottom:6}}>{book.author}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <Avg ratings={book.ratings||{}}/>
+            {book.genre && <GenrePill genre={book.genre} small/>}
+          </div>
+        </div>
+        <button onClick={()=>setOpen(!open)} style={{background:"transparent",border:"1px solid #5A3A20",
+          color:"#9A7A50",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,flexShrink:0}}>
+          {open?"▲":"▼"}</button>
+      </div>
+
+      {open && (
+        <div style={{borderTop:"1px solid #3A2A18",padding:"15px 17px"}}>
+          {/* Ratings */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Ratings</div>
+            <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
+              {MEMBERS.map(m=>(
+                <div key={m} style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <span style={{fontSize:12,color:MC[m].bg,fontWeight:600}}>{m}</span>
+                  <Stars value={book.ratings?.[m]||0} onChange={m===currentUser?v=>onRate(book.id,v):null} readonly={m!==currentUser} size={16}/>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes — all visible */}
+          <div>
+            <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Notes</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {MEMBERS.map(m=>{
+                const isMe = m === currentUser;
+                const note = book.notes?.[m];
+                return (
+                  <div key={m}>
+                    <div style={{fontSize:11,color:MC[m].bg,fontWeight:600,marginBottom:4}}>{m}{isMe?" (you)":""}</div>
+                    {isMe && editNote ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                        <textarea value={myNote} onChange={e=>setMyNote(e.target.value)}
+                          placeholder="Your thoughts…" rows={2}
+                          style={{background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,color:"#F2E8D0",
+                            padding:"8px 11px",fontSize:13,resize:"vertical",outline:"none",width:"100%",fontFamily:"inherit"}}/>
+                        <div style={{display:"flex",gap:7}}>
+                          <button onClick={()=>{onSaveNote(book.id,myNote);setEditNote(false);}}
+                            style={{background:"#4A7C59",border:"none",color:"#E8F3EC",borderRadius:7,
+                              padding:"5px 13px",cursor:"pointer",fontSize:12,fontWeight:600}}>Save</button>
+                          <button onClick={()=>setEditNote(false)}
+                            style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",
+                              borderRadius:7,padding:"5px 13px",cursor:"pointer",fontSize:12}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div onClick={()=>isMe&&setEditNote(true)}
+                        style={{background:"#160E0570",border:`1px ${note?"solid":"dashed"} ${isMe?"#4A3020":"#2A1C0E"}`,
+                          borderRadius:8,padding:"8px 11px",cursor:isMe?"pointer":"default",minHeight:36,
+                          fontSize:13,color:note?"#C8A870":"#5A3A28",fontStyle:note?"normal":"italic",
+                          lineHeight:1.5}}>
+                        {note||(isMe?"Click to add your notes…":"No note yet")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Home Tab ─────────────────────────────────────────────────────────────────
+function HomeTab({ data, currentUser, setUser }) {
+  const totalRead = data.bookshelf.length;
+  const inQueue   = data.queue.length;
+  const current   = data.currentRead;
+
+  // Member stats
+  const memberStats = MEMBERS.map(m => {
+    const suggested = [...data.queue,...data.bookshelf].filter(b=>b.suggestedBy===m).length;
+    const rated = data.bookshelf.filter(b=>b.ratings?.[m]>0);
+    const avgRating = rated.length ? (rated.reduce((a,b)=>a+(b.ratings[m]||0),0)/rated.length).toFixed(1) : null;
+    return { name:m, suggested, avgRating, notes: data.bookshelf.filter(b=>b.notes?.[m]).length };
+  });
+
+  const StatBox = ({label, value, sub}) => (
+    <div style={{flex:1,background:"linear-gradient(135deg,#2A1C0E,#1E1408)",border:"1px solid #3A2A18",
+      borderRadius:12,padding:"16px 14px",textAlign:"center"}}>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,fontWeight:900,color:"#C9A030",lineHeight:1}}>{value}</div>
+      <div style={{fontSize:11,color:"#9A7A50",textTransform:"uppercase",letterSpacing:1.5,marginTop:4}}>{label}</div>
+      {sub && <div style={{fontSize:11,color:"#6A4A30",marginTop:3,fontStyle:"italic"}}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      {/* Hero */}
+      <div style={{background:"linear-gradient(135deg,#2E1E0C,#1E1408)",border:"1px solid #4A3020",
+        borderRadius:16,padding:"28px 24px",marginBottom:18,textAlign:"center",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%, #C9A03015 0%, transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:13,color:"#C9A030",
+          letterSpacing:5,textTransform:"uppercase",fontStyle:"italic",marginBottom:4}}>The</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:34,fontWeight:900,
+          color:"#F2E8D0",letterSpacing:-1,lineHeight:1,marginBottom:10}}>THIRD CHAPTER</div>
+        <div style={{fontSize:15,color:"#9A7A50",fontStyle:"italic",marginBottom:18}}>
+          "turning pages &amp; spilling tea"
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap"}}>
+          {MEMBERS.map(m=>(
+            <div key={m} style={{display:"flex",alignItems:"center",gap:7,
+              background:`${MC[m].bg}20`,border:`1px solid ${MC[m].bg}40`,
+              borderRadius:20,padding:"5px 14px"}}>
+              <div style={{width:22,height:22,borderRadius:11,background:MC[m].bg,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:11,fontWeight:700,color:"#FFF"}}>{m[0]}</div>
+              <span style={{fontSize:13,color:MC[m].bg}}>{m}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Who's reading today */}
+      <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",border:"1px solid #4A3020",
+        borderRadius:14,padding:"18px 20px",marginBottom:18}}>
+        <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:14}}>
+          {currentUser ? `Reading as · ${currentUser}` : "Who's reading today?"}
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {MEMBERS.map(m=>{
+            const c=MC[m]; const active=currentUser===m;
+            return (
+              <button key={m} onClick={()=>setUser(active?null:m)}
+                style={{display:"flex",alignItems:"center",gap:8,
+                  background:active?`${c.bg}30`:`${c.bg}12`,
+                  border:`1.5px solid ${active?c.bg:`${c.bg}40`}`,
+                  borderRadius:24,padding:"7px 16px",cursor:"pointer",transition:"all .2s",flex:1,minWidth:100,justifyContent:"center"}}>
+                <div style={{width:26,height:26,borderRadius:13,background:c.bg,display:"flex",
+                  alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#FFF"}}>{m[0]}</div>
+                <span style={{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:active?700:400,
+                  color:active?"#F2E8D0":"#9A7A50"}}>{m}</span>
+                {active && <span style={{fontSize:10,color:c.bg}}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        {!currentUser && <div style={{fontSize:11,color:"#5A3A20",marginTop:10,fontStyle:"italic"}}>
+          Tap your name to add books, rate, and leave notes</div>}
+      </div>
+
+
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <StatBox label="Books Read" value={totalRead}/>
+        <StatBox label="In Queue" value={inQueue}/>
+        <StatBox label="Est." value="2025" sub="our first chapter"/>
+      </div>
+
+      {/* Currently reading preview */}
+      {current && (
+        <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",border:"1px solid #5A3A20",
+          borderRadius:12,padding:"15px 17px",marginBottom:18,display:"flex",gap:14,alignItems:"center"}}>
+          <CoverImg url={current.coverUrl} color={MC[current.suggestedBy]?.bg} size={44}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#C9A030",textTransform:"uppercase",marginBottom:4}}>Currently Reading</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:700,color:"#F2E8D0",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{current.title}</div>
+            <div style={{fontSize:12,color:"#9A7A50"}}>{current.author}</div>
+          </div>
+          {current.startDate && <div style={{fontSize:11,color:cdColor(countdown(current.startDate).daysLeft),fontWeight:600,flexShrink:0}}>
+            {countdown(current.startDate).daysLeft}d left
+          </div>}
+        </div>
+      )}
+
+      {/* Member cards */}
+      <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:12}}>Member Stats</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
+        {memberStats.map(m=>(
+          <div key={m.name} style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+            border:`1px solid ${MC[m.name].bg}35`,borderRadius:12,padding:"13px 16px",
+            display:"flex",alignItems:"center",gap:14}}>
+            <div style={{width:40,height:40,borderRadius:20,background:MC[m.name].bg,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:18,fontWeight:700,color:"#FFF",flexShrink:0}}>{m.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:"#F2E8D0"}}>{m.name}</div>
+              <div style={{fontSize:12,color:"#8A6A40",marginTop:2}}>
+                {m.suggested} book{m.suggested!==1?"s":""} suggested · {m.notes} note{m.notes!==1?"s":""}
+              </div>
+            </div>
+            {m.avgRating && <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontSize:13,color:"#C9A030",fontWeight:600}}>★ {m.avgRating}</div>
+              <div style={{fontSize:10,color:"#6A4A30"}}>avg rating</div>
+            </div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Fun about section */}
+      <div style={{background:"linear-gradient(135deg,#2A1C0E,#1E1408)",border:"1px solid #3A2A18",
+        borderRadius:12,padding:"18px 20px"}}>
+        <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:12}}>About the Club</div>
+        <div style={{fontSize:15,color:"#C8A870",lineHeight:1.7,fontStyle:"italic"}}>
+          Three friends. One chai. Infinite opinions about fictional characters.
+        </div>
+        <div style={{height:"1px",background:"#3A2A18",margin:"14px 0"}}/>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[
+            {e:"📅", t:"Meeting vibe", d:"Whenever the group chat says so"},
+            {e:"☕", t:"Official drink", d:"Chai. Obviously."},
+            {e:"📏", t:"Reading target", d:"One book per month"},
+            {e:"🗳️", t:"Next pick", d:"Rotate whose turn it is to suggest"},
+            {e:"⭐", t:"Rating system", d:"Brutally honest 1–5 stars"},
+          ].map(r=>(
+            <div key={r.t} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{fontSize:16,flexShrink:0}}>{r.e}</span>
+              <div>
+                <span style={{fontSize:13,color:"#F2E8D0",fontWeight:600}}>{r.t}: </span>
+                <span style={{fontSize:13,color:"#9A7A50"}}>{r.d}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const [user, setUser]         = useState(null);
+  const [tab, setTab]           = useState("home");
+  const [data, setData]         = useState(DEFAULT);
+  const [loading, setLoading]   = useState(true);
+  const [syncing, setSyncing]   = useState(false);
+  const [syncErr, setSyncErr]   = useState(false);
+  const [showAdd, setShowAdd]   = useState(false);
+  const [showRead, setShowRead] = useState(false);
+  const [genreFilter, setGenreFilter] = useState("All");
+  const pollRef = useRef(null);
+  const saving  = useRef(false);
+
+  // Load + poll — only runs if JSONBin is configured
+  useEffect(()=>{
+    async function load() {
+      if (!window.cloudStorage.isCloud) { setLoading(false); return; }
+      try { const d = await window.cloudStorage.read(); if(d) setData(d); setSyncErr(false); }
+      catch { setSyncErr(true); }
+      setLoading(false);
+    }
+    load();
+
+    // Poll every 15s — only when cloud is configured
+    if (window.cloudStorage.isCloud) {
+      pollRef.current = setInterval(async()=>{
+        if (saving.current) return;
+        try { const d = await window.cloudStorage.read(); if(d) setData(d); setSyncErr(false); }
+        catch { setSyncErr(true); }
+      }, 15000);
+    }
+
+    // Re-fetch when tab regains focus
+    const onFocus = () => {
+      if (!window.cloudStorage.isCloud || saving.current) return;
+      window.cloudStorage.read().then(d=>{if(d)setData(d);setSyncErr(false);}).catch(()=>setSyncErr(true));
+    };
+    window.addEventListener("focus", onFocus);
+    return ()=>{ clearInterval(pollRef.current); window.removeEventListener("focus",onFocus); };
+  },[]);
+
+  const save = useCallback(async nd=>{
+    saving.current = true; setSyncing(true); setData(nd);
+    try { await window.cloudStorage.write(nd); setSyncErr(false); }
+    catch { setSyncErr(true); }
+    setSyncing(false); saving.current = false;
+  },[]);
+
+  // Actions
+  const addToQueue   = (title,author,genre,coverUrl)=>save({...data,queue:[...data.queue,{id:Date.now(),title,author,genre,coverUrl,suggestedBy:user,addedDate:new Date().toISOString()}]});
+  const removeQueue  = id=>save({...data,queue:data.queue.filter(b=>b.id!==id)});
+  const makeCurrent  = book=>{ save({...data,currentRead:{...book,startDate:new Date().toISOString()},queue:data.queue.filter(b=>b.id!==book.id)}); setTab("current"); };
+  const markRead     = (rating,note)=>{ if(!data.currentRead)return; save({...data,currentRead:null,bookshelf:[{...data.currentRead,finishedDate:new Date().toISOString(),ratings:{...data.currentRead.ratings,[user]:rating},notes:{...(data.currentRead.notes||{}),[user]:note}},...data.bookshelf]}); setShowRead(false); };
+  const updateRating = (id,r)=>save({...data,bookshelf:data.bookshelf.map(b=>b.id===id?{...b,ratings:{...b.ratings,[user]:r}}:b)});
+  const updateNote   = (id,n)=>save({...data,bookshelf:data.bookshelf.map(b=>b.id===id?{...b,notes:{...(b.notes||{}),[user]:n}}:b)});
+
+  // Genre list from queue
+  const queueGenres = ["All",...new Set(data.queue.map(b=>b.genre).filter(Boolean))];
+  const filteredQueue = genreFilter==="All" ? data.queue : data.queue.filter(b=>b.genre===genreFilter);
+
+  const col = user ? MC[user] : { bg: "#C9A030" };
+
+  // ── Main app ─────────────────────────────────────────────────────────────────
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#1C120A,#0E0802)"}}>
+
+      {/* Header */}
+      <div style={{borderBottom:"1px solid #3A2A18",padding:"12px 20px",display:"flex",
+        alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,
+        background:"rgba(14,8,2,0.92)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>
+        <button onClick={()=>setUser(null)} style={{display:"flex",alignItems:"center",gap:10,
+          background:"transparent",border:"none",cursor:"pointer",padding:0}}>
+          <span style={{fontSize:18}}>📖</span>
+          <div>
+            <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:11,fontStyle:"italic",color:"#C9A030"}}>The</span>
+              <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:900,color:"#F2E8D0",letterSpacing:-.5}}>THIRD CHAPTER</span>
+            </div>
+            <div style={{fontSize:9,letterSpacing:2.5,color:"#5A3A20",textTransform:"uppercase"}}>Book Club</div>
+          </div>
+        </button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {syncing && <span style={{fontSize:10,color:"#6A4A30",animation:"pulse 1s infinite"}}>syncing…</span>}
+          {syncErr && <span style={{fontSize:10,color:"#C43030"}}>sync failed</span>}
+          {window.cloudStorage.isCloud && !syncing && !syncErr && <span style={{fontSize:10,color:"#4A7C59",opacity:.7}}>☁️</span>}
+          {user ? (
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,background:`${col.bg}1E`,
+                border:`1px solid ${col.bg}45`,borderRadius:18,padding:"4px 10px"}}>
+                <div style={{width:20,height:20,borderRadius:10,background:col.bg,display:"flex",
+                  alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#FFF"}}>{user[0]}</div>
+                <span style={{fontSize:12,color:col.bg,fontWeight:600}}>{user}</span>
+              </div>
+              <button onClick={()=>{setUser(null);setTab("home");}} style={{background:"transparent",border:"1px solid #3A2A18",
+                color:"#7A5A30",borderRadius:8,padding:"4px 9px",cursor:"pointer",fontSize:11}}>Switch</button>
+            </div>
+          ) : (
+            <button onClick={()=>setTab("home")} style={{background:"#C9A03022",border:"1px solid #C9A03055",
+              color:"#C9A030",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+              Who's reading? →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid #3A2A18",padding:"0 16px",overflowX:"auto"}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{background:"transparent",border:"none",
+            borderBottom:tab===t.id?"2px solid #C9A030":"2px solid transparent",
+            color:tab===t.id?"#F2E8D0":"#6A4A28",padding:"12px 15px",cursor:"pointer",
+            fontSize:13,fontWeight:tab===t.id?600:400,display:"flex",alignItems:"center",gap:5,
+            transition:"color .2s",marginBottom:-1,whiteSpace:"nowrap"}}>
+            <span style={{fontSize:12}}>{t.icon}</span> {t.label}
+            {t.id==="queue"&&data.queue.length>0&&
+              <span style={{background:"#C9A030",color:"#1C120A",borderRadius:9,fontSize:10,padding:"0px 5px",fontWeight:700}}>{data.queue.length}</span>}
+            {t.id==="bookshelf"&&data.bookshelf.length>0&&
+              <span style={{background:"#4A7C59",color:"#E8F3EC",borderRadius:9,fontSize:10,padding:"0px 5px",fontWeight:700}}>{data.bookshelf.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div style={{padding:60,textAlign:"center",color:"#7A5A30",fontSize:15}}>Loading your library…</div>
+      ) : (
+        <div style={{padding:20,maxWidth:680,margin:"0 auto"}}>
+
+          {/* HOME */}
+          {tab==="home" && <HomeTab data={data} currentUser={user} setUser={setUser}/>}
+
+          {/* NOW READING */}
+          {tab==="current" && (
+            data.currentRead ? (
+              <div className="fade-in">
+                <div style={{background:"linear-gradient(135deg,#2E1E0C,#1E1408)",border:"1px solid #6A4A20",
+                  borderRadius:16,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:10,letterSpacing:4,color:"#C9A030",textTransform:"uppercase",marginBottom:14}}>✦ Currently Reading</div>
+                  <div style={{display:"flex",gap:18,marginBottom:16}}>
+                    <CoverImg url={data.currentRead.coverUrl} color={col.bg} size={76}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:900,
+                        color:"#F2E8D0",lineHeight:1.2,marginBottom:6}}>{data.currentRead.title}</div>
+                      <div style={{fontSize:14,color:"#9A7A50",marginBottom:8}}>{data.currentRead.author}</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                        <span style={{fontSize:11,color:MC[data.currentRead.suggestedBy]?.bg||"#C9A030"}}>
+                          Suggested by {data.currentRead.suggestedBy}</span>
+                        {data.currentRead.genre && <GenrePill genre={data.currentRead.genre} small/>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Countdown */}
+                  {data.currentRead.startDate && <Countdown startDate={data.currentRead.startDate}/>}
+
+                  <div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:14}}>
+                    <button onClick={()=>{ if(!user){setTab("home");return;} setShowRead(true);}} style={{background:"#4A7C59",border:"none",color:"#E8F3EC",
+                      borderRadius:10,padding:"10px 18px",cursor:"pointer",fontSize:13,fontWeight:700}}>🎉 We Finished It!</button>
+                    <button onClick={()=>save({...data,currentRead:null,queue:[data.currentRead,...data.queue]})}
+                      style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",
+                        borderRadius:10,padding:"9px 15px",cursor:"pointer",fontSize:13}}>← Back to Queue</button>
+                  </div>
+                </div>
+                <div style={{background:"#221508",border:"1px solid #3A2A18",borderRadius:12,padding:"14px 17px"}}>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#7A5A30",textTransform:"uppercase",marginBottom:10}}>Reading With</div>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                    {MEMBERS.map(m=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",gap:7}}>
+                        <div style={{width:28,height:28,borderRadius:14,background:MC[m].bg,display:"flex",
+                          alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#FFF"}}>{m[0]}</div>
+                        <span style={{fontSize:13,color:m===user?"#F2E8D0":"#8A6A40",fontWeight:m===user?600:400}}>{m}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="fade-in" style={{textAlign:"center",padding:"56px 20px"}}>
+                <div style={{fontSize:48,marginBottom:12}}>📭</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,color:"#8A6A40",marginBottom:7}}>Nothing selected yet</div>
+                <div style={{fontSize:14,color:"#5A3A20",marginBottom:22}}>Promote a book from the queue to start reading</div>
+                <button onClick={()=>setTab("queue")} style={{background:"#C9A030",border:"none",color:"#1C120A",
+                  borderRadius:10,padding:"11px 22px",cursor:"pointer",fontSize:14,fontWeight:700}}>Browse the Queue →</button>
+              </div>
+            )
+          )}
+
+          {/* QUEUE */}
+          {tab==="queue" && (
+            <div className="fade-in">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,color:"#F2E8D0"}}>Up Next</div>
+                  <div style={{fontSize:12,color:"#6A4A30",marginTop:2}}>{data.queue.length} book{data.queue.length!==1?"s":""} waiting</div>
+                </div>
+                <button onClick={()=>{ if(!user){setTab("home");return;} setShowAdd(true);}} style={{background:"#C9A030",border:"none",color:"#1C120A",
+                  borderRadius:10,padding:"8px 15px",cursor:"pointer",fontSize:13,fontWeight:700}}>+ Add Book</button>
+              </div>
+
+              {/* Genre filter */}
+              {queueGenres.length > 1 && (
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:16}}>
+                  {queueGenres.map(g=>(
+                    <GenrePill key={g} genre={g} active={genreFilter===g} onClick={()=>setGenreFilter(g)}/>
+                  ))}
+                </div>
+              )}
+
+              {filteredQueue.length===0 ? (
+                <div style={{textAlign:"center",padding:"44px 20px"}}>
+                  <div style={{fontSize:44,marginBottom:10}}>📋</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#8A6A40",marginBottom:6}}>
+                    {genreFilter==="All"?"Queue is empty":`No ${genreFilter} books in the queue`}</div>
+                  {genreFilter!=="All"
+                    ? <button onClick={()=>setGenreFilter("All")} style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13}}>Show All</button>
+                    : <div style={{fontSize:13,color:"#5A3A20"}}>Add some books you'd love to read together</div>}
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {filteredQueue.map(b=><QueueCard key={b.id} book={b} onMakeCurrent={makeCurrent} onRemove={removeQueue}/>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BOOKSHELF */}
+          {tab==="bookshelf" && (
+            <div className="fade-in">
+              <div style={{marginBottom:16}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,color:"#F2E8D0"}}>Bookshelf</div>
+                <div style={{fontSize:12,color:"#6A4A30",marginTop:2}}>{data.bookshelf.length} book{data.bookshelf.length!==1?"s":""} finished together</div>
+              </div>
+              {data.bookshelf.length===0 ? (
+                <div style={{textAlign:"center",padding:"44px 20px"}}>
+                  <div style={{fontSize:44,marginBottom:10}}>🏛️</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#8A6A40",marginBottom:6}}>Your story begins here</div>
+                  <div style={{fontSize:13,color:"#5A3A20"}}>Finished books with ratings and notes will live here</div>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {data.bookshelf.map(b=><ShelfCard key={b.id} book={b} currentUser={user} onRate={updateRating} onSaveNote={updateNote}/>)}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {showAdd  && <AddModal currentUser={user} onAdd={addToQueue} onClose={()=>setShowAdd(false)}/>}
+      {showRead && data.currentRead && <MarkReadModal book={data.currentRead} currentUser={user} onConfirm={markRead} onClose={()=>setShowRead(false)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
