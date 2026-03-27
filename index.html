@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Third Chapter · Book Club</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400&family=Cormorant+Garamond:wght@300;400;600&display=swap" rel="stylesheet"/>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { min-height: 100vh; }
+    body { background: #0E0802; color: #F2E8D0; font-family: 'Cormorant Garamond', Georgia, serif; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #1C120A; }
+    ::-webkit-scrollbar-thumb { background: #4A3020; border-radius: 3px; }
+    input, textarea, select { font-family: inherit; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .fade-in { animation: fadeIn .3s ease forwards; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SYNC CONFIG  —  JSONBin.io (100% free, no credit card ever)
+     ───────────────────────────────────────────────────────────────────────────
+     SETUP (2 minutes):
+       1. Go to https://jsonbin.io  →  Sign Up (just email, no card)
+       2. Account Settings  →  API Keys  →  Create Master Key  →  copy it
+       3. Bins (left sidebar)  →  Create Bin  →  paste {}  →  Create
+       4. Copy the Bin ID from the URL or bin header
+       5. Paste both values below, save index.html, push to GitHub, deploy!
+     ─────────────────────────────────────────────────────────────────────── -->
+<script>
+const JSONBIN = {
+  binId:  "69c4a667b7ec241ddca41266",
+  key:    "$2a$10$V0UgVfQPCVrN5gRv5..ey.Nn4yRTegsL8Gd2.ELVhjWebU8ogAbv."
+};
+
+const BASE = "https://api.jsonbin.io/v3/b";
+const LS_KEY = "ttc-data-v1";
+
+function contentScore(d) {
+  if (!d) return -1;
+  return (d.bookshelf ? d.bookshelf.length : 0)
+       + (d.queue     ? d.queue.length     : 0)
+       + (d.currentRead ? 1                : 0);
+}
+
+window.cloudStorage = {
+  isCloud: !!(JSONBIN.binId && JSONBIN.key),
+  lastErr: null,
+
+  // Always returns local data immediately. JSONBin only wins if it has MORE content.
+  async read() {
+    const raw = localStorage.getItem(LS_KEY);
+    const local = raw ? JSON.parse(raw) : null;
+    if (!this.isCloud) return local;
+    try {
+      const r = await fetch(`${BASE}/${JSONBIN.binId}/latest`, {
+        headers: { "X-Master-Key": JSONBIN.key, "X-Bin-Meta": "false" }
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        this.lastErr = "JSONBin " + r.status + ": " + t.slice(0,120);
+        console.error("JSONBin read error:", this.lastErr);
+        return local;
+      }
+      const cloud = await r.json();
+      this.lastErr = null;
+      // Only use cloud data if it has more content than local
+      if (contentScore(cloud) > contentScore(local)) {
+        localStorage.setItem(LS_KEY, JSON.stringify(cloud));
+        return cloud;
+      }
+      return local;
+    } catch(e) {
+      this.lastErr = e.message;
+      console.error("JSONBin read exception:", e);
+      return local;
+    }
+  },
+
+  async write(data) {
+    // Always save locally first — data persists on refresh regardless of cloud
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    if (!this.isCloud) return;
+    try {
+      const r = await fetch(`${BASE}/${JSONBIN.binId}`, {
+        method: "PUT",
+        headers: {
+          "X-Master-Key": JSONBIN.key,
+          "Content-Type": "application/json",
+          "X-Bin-Meta": "false"
+        },
+        body: JSON.stringify(data)
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        this.lastErr = "JSONBin save " + r.status + ": " + t.slice(0,120);
+        console.error("JSONBin write error:", this.lastErr);
+        throw new Error(this.lastErr);
+      }
+      this.lastErr = null;
+    } catch(e) {
+      if (!this.lastErr) this.lastErr = e.message;
+      throw e;
+    }
+  }
+};
+</script>
+
+<script type="text/babel">
+const MEMBER_PHOTOS = {
+  Sofia:       "data:image/jpeg;base64,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",
+  Maya:        "data:image/jpeg;base64,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",
+  Sanghamitra: "data:image/jpeg;base64,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",
+};
+
+const { useState, useEffect, useCallback, useRef } = React;
+
+function MemberAvatar({ name, size=40, style={} }) {
+  const photo = MEMBER_PHOTOS[name];
+  const col = MC[name]?.bg || "#C9A030";
+  if (photo) return (
+    <img src={photo} alt={name}
+      style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",
+        objectPosition:"center top",flexShrink:0,border:`2px solid ${col}40`,...style}}/>
+  );
+  return (
+    <div style={{width:size,height:size,borderRadius:size/2,background:col,display:"flex",
+      alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:700,
+      color:"#FFF",flexShrink:0,...style}}>{name[0]}</div>
+  );
+}
+
+
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const MEMBERS = ["Sofia", "Maya", "Sanghamitra"];
+const MC = {
+  Sofia:       { bg: "#C4623A", dim: "#7A2E10" },
+  Maya:        { bg: "#7A4E6E", dim: "#4A2248" },
+  Sanghamitra: { bg: "#4A7C59", dim: "#2A4A38" },
+};
+const GENRES = ["Fiction","Literary Fiction","Non-Fiction","Mystery & Thriller",
+  "Romance","Sci-Fi","Fantasy","Historical Fiction","Biography & Memoir",
+  "Self-Help","Short Stories","Poetry","Other"];
+const TABS = [
+  { id:"home",      label:"Home",        icon:"✦" },
+  { id:"current",   label:"Now Reading", icon:"📖" },
+  { id:"queue",     label:"Up Next",     icon:"📚" },
+  { id:"bookshelf", label:"Bookshelf",   icon:"🏛️" },
+];
+const DEFAULT = { currentRead: null, queue: [], bookshelf: [] };
+const BOOK_PALETTE = ["#C4623A","#7A4E6E","#4A7C59","#C9932A","#5A7EA0","#8B4A1C","#6B5B95"];
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+async function fetchCover(title, author) {
+  try {
+    const q = encodeURIComponent((title + (author ? " " + author : "")).trim());
+    const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=3&printType=books`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.items) return null;
+    // Try each result until we find one with a cover
+    for (const item of d.items) {
+      const links = item.volumeInfo?.imageLinks;
+      const url = links?.thumbnail || links?.smallThumbnail;
+      if (url) return url.replace("http://", "https://").replace("&edge=curl","");
+    }
+    return null;
+  } catch(e) { console.warn("Cover fetch failed:", e); return null; }
+}
+
+function countdown(startDate) {
+  const start = new Date(startDate);
+  const target = new Date(start.getTime() + 30*24*60*60*1000);
+  const now = new Date();
+  const daysLeft = Math.ceil((target - now)/(24*60*60*1000));
+  const progress = Math.min(1, Math.max(0, (now-start)/(30*24*60*60*1000)));
+  return { daysLeft, progress, overdue: daysLeft < 0, target };
+}
+
+function cdColor(daysLeft) {
+  if (daysLeft > 20) return "#4A7C59";
+  if (daysLeft > 10) return "#C9A030";
+  if (daysLeft > 3)  return "#C4623A";
+  return "#C4303A";
+}
+
+// ─── Small components ─────────────────────────────────────────────────────────
+function Stars({ value, onChange, readonly=false, size=20 }) {
+  const [hov, setHov] = useState(0);
+  return (
+    <div style={{display:"flex",gap:2,cursor:readonly?"default":"pointer"}}>
+      {[1,2,3,4,5].map(s=>(
+        <span key={s} style={{fontSize:size,color:s<=(hov||value||0)?"#C9A030":"#5A3A20",
+          transition:"color .12s",opacity:s<=(hov||value||0)?1:0.28}}
+          onMouseEnter={()=>!readonly&&setHov(s)} onMouseLeave={()=>!readonly&&setHov(0)}
+          onClick={()=>!readonly&&onChange&&onChange(s===value?0:s)}>★</span>
+      ))}
+    </div>
+  );
+}
+
+function Avg({ ratings={} }) {
+  const v = Object.values(ratings).filter(x=>x>0);
+  if (!v.length) return <span style={{color:"#6A4A30",fontSize:12}}>No ratings</span>;
+  const a = (v.reduce((a,b)=>a+b,0)/v.length).toFixed(1);
+  return <span style={{color:"#C9A030",fontSize:13,fontWeight:600}}>★ {a}
+    <span style={{color:"#8A6A40",fontWeight:400,fontSize:11}}> ({v.length})</span></span>;
+}
+
+function GenrePill({ genre, small=false, onClick, active=false }) {
+  if (!genre) return null;
+  return (
+    <span onClick={onClick} style={{
+      display:"inline-block",fontSize:small?10:11,
+      background:active?"#C9A03030":"#2A1C0E",
+      color:active?"#C9A030":"#9A7A50",
+      border:`1px solid ${active?"#C9A03060":"#4A3020"}`,
+      borderRadius:20,padding:small?"1px 8px":"2px 10px",
+      letterSpacing:.4,cursor:onClick?"pointer":"default",transition:"all .15s",
+      whiteSpace:"nowrap"
+    }}>{genre}</span>
+  );
+}
+
+function CoverImg({ url, color, size=60 }) {
+  const [err, setErr] = useState(false);
+  if (url && !err) return (
+    <img src={url} onError={()=>setErr(true)}
+      style={{width:size,height:size*1.4,objectFit:"cover",borderRadius:4,
+        boxShadow:"2px 3px 10px rgba(0,0,0,.5)",flexShrink:0}} alt="cover"/>
+  );
+  return (
+    <div style={{width:size,height:size*1.4,borderRadius:4,background:color||"#4A3020",
+      flexShrink:0,boxShadow:"2px 3px 10px rgba(0,0,0,.4)",
+      display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.38}}>📘</div>
+  );
+}
+
+function Countdown({ startDate }) {
+  const { daysLeft, progress, overdue, target } = countdown(startDate);
+  const col = cdColor(daysLeft);
+  const fmt = target.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  return (
+    <div style={{marginTop:14,background:"#160E0580",borderRadius:10,padding:"12px 16px",border:"1px solid #3A2A18"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:11,letterSpacing:2,color:"#8A6A40",textTransform:"uppercase"}}>
+          {overdue?"Overdue!":"Reading Deadline"}
+        </span>
+        <span style={{fontSize:12,color:col,fontWeight:600}}>
+          {overdue?`${Math.abs(daysLeft)}d overdue`:`${daysLeft} day${daysLeft!==1?"s":""} left`}
+          <span style={{color:"#6A4A30",fontWeight:400}}> · {fmt}</span>
+        </span>
+      </div>
+      <div style={{background:"#2A1C0E",borderRadius:4,height:5,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${progress*100}%`,background:col,
+          borderRadius:4,transition:"width .5s"}}/>
+      </div>
+      {overdue && <div style={{fontSize:11,color:"#C4303A",marginTop:6,fontStyle:"italic"}}>
+        Don't worry — quality over speed! 📚</div>}
+    </div>
+  );
+}
+
+// ─── Add Book Modal ───────────────────────────────────────────────────────────
+function AddModal({ currentUser, onAdd, onClose }) {
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [genre, setGenre] = useState("");
+  const [cover, setCover] = useState(null);
+  const [fetchingCover, setFetchingCover] = useState(false);
+  const debounce = useRef(null);
+
+  async function doFetchCover(t, a) {
+    if (!t.trim()) return;
+    setFetchingCover(true);
+    const url = await fetchCover(t, a);
+    setCover(url);
+    setFetchingCover(false);
+  }
+
+  function onTitleBlur() {
+    clearTimeout(debounce.current);
+    if (title.trim()) debounce.current = setTimeout(()=>doFetchCover(title,author), 400);
+  }
+  function onAuthorBlur() {
+    clearTimeout(debounce.current);
+    if (title.trim()) debounce.current = setTimeout(()=>doFetchCover(title,author), 400);
+  }
+
+  const inp = {background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,color:"#F2E8D0",
+    padding:"9px 12px",fontSize:14,outline:"none",width:"100%",transition:"border-color .2s"};
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div className="fade-in" style={{background:"linear-gradient(135deg,#2E1E0C,#231508)",
+        border:"1px solid #6A4A20",borderRadius:16,padding:26,width:"100%",maxWidth:440,
+        boxShadow:"0 20px 60px rgba(0,0,0,.65)"}} onClick={e=>e.stopPropagation()}>
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,color:"#F2E8D0",fontWeight:700}}>Add to Queue</div>
+            <div style={{fontSize:12,color:"#9A7A50",marginTop:2}}>
+              Suggested by <span style={{color:MC[currentUser]?.bg}}>{currentUser}</span>
+            </div>
+          </div>
+          {/* Cover preview */}
+          <div style={{width:50,height:70,borderRadius:6,background:"#2A1C0E",border:"1px solid #4A3020",
+            overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {fetchingCover
+              ? <span style={{fontSize:10,color:"#6A4A30",textAlign:"center",padding:4,animation:"pulse 1s infinite"}}>finding cover…</span>
+              : cover
+                ? <img src={cover} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={()=>setCover(null)}/>
+                : <span style={{fontSize:20}}>📗</span>}
+          </div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Book Title *</label>
+            <input value={title} onChange={e=>setTitle(e.target.value)} onBlur={onTitleBlur}
+              placeholder="e.g. The God of Small Things" style={inp} autoFocus
+              onFocus={e=>e.target.style.borderColor="#C9A030"} />
+          </div>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Author</label>
+            <input value={author} onChange={e=>setAuthor(e.target.value)} onBlur={onAuthorBlur}
+              placeholder="e.g. Arundhati Roy" style={inp}
+              onFocus={e=>e.target.style.borderColor="#C9A030"}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,color:"#9A7A50",letterSpacing:1,display:"block",marginBottom:5,textTransform:"uppercase"}}>Genre</label>
+            <select value={genre} onChange={e=>setGenre(e.target.value)}
+              style={{...inp,background:"#160E05",cursor:"pointer"}}>
+              <option value="">Select genre…</option>
+              {GENRES.map(g=><option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:9,marginTop:20}}>
+          <button onClick={()=>{if(title.trim()){onAdd(title.trim(),author.trim()||"Unknown",genre,cover);onClose();}}}
+            disabled={!title.trim()} style={{flex:1,background:title.trim()?"#C9A030":"#3A2A18",border:"none",
+              color:title.trim()?"#1C120A":"#6A5030",borderRadius:10,padding:12,
+              cursor:title.trim()?"pointer":"not-allowed",fontSize:14,fontWeight:700}}>Add Book ✓</button>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #5A3A20",
+            color:"#9A7A50",borderRadius:10,padding:"12px 18px",cursor:"pointer",fontSize:14}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mark Read Modal ──────────────────────────────────────────────────────────
+function MarkReadModal({ book, currentUser, onConfirm, onClose }) {
+  const [rating, setRating] = useState(0);
+  const [note, setNote]   = useState("");
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:200,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div className="fade-in" style={{background:"linear-gradient(135deg,#2E1E0C,#231508)",
+        border:"1px solid #6A4A20",borderRadius:16,padding:26,width:"100%",maxWidth:420,
+        boxShadow:"0 20px 60px rgba(0,0,0,.65)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:30,textAlign:"center",marginBottom:10}}>🎉</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:"#F2E8D0",
+          fontWeight:700,textAlign:"center",marginBottom:4}}>Finished it!</div>
+        <div style={{fontSize:13,color:"#9A7A50",textAlign:"center",marginBottom:20}}>
+          <em>"{book.title}"</em></div>
+
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10,textAlign:"center"}}>
+            Your Rating, {currentUser}</div>
+          <div style={{display:"flex",justifyContent:"center"}}><Stars value={rating} onChange={setRating} size={30}/></div>
+        </div>
+
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Your Notes <span style={{opacity:.5}}>(visible to all)</span></div>
+          <textarea value={note} onChange={e=>setNote(e.target.value)}
+            placeholder="First impressions, favourite quote, how it made you feel…"
+            rows={3} style={{background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,
+              color:"#F2E8D0",padding:"9px 12px",fontSize:13,resize:"vertical",
+              outline:"none",width:"100%",fontFamily:"inherit"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:9}}>
+          <button onClick={()=>onConfirm(rating, note)} style={{flex:1,background:"#4A7C59",border:"none",
+            color:"#E8F3EC",borderRadius:10,padding:12,cursor:"pointer",fontSize:14,fontWeight:700}}>
+            Move to Bookshelf 📚</button>
+          <button onClick={onClose} style={{background:"transparent",border:"1px solid #5A3A20",
+            color:"#9A7A50",borderRadius:10,padding:"12px 16px",cursor:"pointer",fontSize:14}}>Not yet</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Queue Card ───────────────────────────────────────────────────────────────
+function QueueCard({ book, onMakeCurrent, onRemove }) {
+  const col = MC[book.suggestedBy] || MC.Sofia;
+  const [hov, setHov] = useState(false);
+  return (
+    <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+      border:`1px solid ${hov?"#C9A030":"#4A3020"}`,borderRadius:12,
+      padding:"15px 17px",display:"flex",alignItems:"center",gap:14,transition:"border-color .2s"}}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>
+      <CoverImg url={book.coverUrl} color={BOOK_PALETTE[book.id % BOOK_PALETTE.length]} size={44}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#F2E8D0",fontWeight:700,
+          marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{book.title}</div>
+        <div style={{fontSize:12,color:"#9A7A50",marginBottom:6}}>{book.author}</div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:11,background:col.bg+"28",color:col.bg,border:`1px solid ${col.bg}40`,
+            borderRadius:20,padding:"1px 8px"}}>by {book.suggestedBy}</span>
+          {book.genre && <GenrePill genre={book.genre} small/>}
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:7,flexShrink:0}}>
+        <button onClick={()=>onMakeCurrent(book)} style={{background:"#C9A030",border:"none",color:"#1C120A",
+          borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>📖 Read Now</button>
+        <button onClick={()=>onRemove(book.id)} style={{background:"transparent",border:"1px solid #5A3A20",
+          color:"#8A6A40",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:12}}>Remove</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bookshelf Card ───────────────────────────────────────────────────────────
+function ShelfCard({ book, currentUser, onRate, onSaveNote }) {
+  const [open, setOpen] = useState(false);
+  const [editNote, setEditNote] = useState(false);
+  const [myNote, setMyNote] = useState(book.notes?.[currentUser]||"");
+  const [hov, setHov] = useState(false);
+  const bg = BOOK_PALETTE[book.id % BOOK_PALETTE.length];
+  return (
+    <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+      border:`1px solid ${hov?"#C9A030":"#4A3020"}`,borderRadius:12,overflow:"hidden",transition:"border-color .2s"}}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>
+      <div style={{padding:"15px 17px",display:"flex",gap:14,alignItems:"flex-start"}}>
+        <CoverImg url={book.coverUrl} color={bg} size={46}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:"#F2E8D0",fontWeight:700,marginBottom:2}}>{book.title}</div>
+          <div style={{fontSize:12,color:"#9A7A50",marginBottom:6}}>{book.author}</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <Avg ratings={book.ratings||{}}/>
+            {book.genre && <GenrePill genre={book.genre} small/>}
+          </div>
+        </div>
+        <button onClick={()=>setOpen(!open)} style={{background:"transparent",border:"1px solid #5A3A20",
+          color:"#9A7A50",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12,flexShrink:0}}>
+          {open?"▲":"▼"}</button>
+      </div>
+
+      {open && (
+        <div style={{borderTop:"1px solid #3A2A18",padding:"15px 17px"}}>
+          {/* Ratings */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Ratings</div>
+            <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
+              {MEMBERS.map(m=>(
+                <div key={m} style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <span style={{fontSize:12,color:MC[m].bg,fontWeight:600}}>{m}</span>
+                  <Stars value={book.ratings?.[m]||0} onChange={m===currentUser?v=>onRate(book.id,v):null} readonly={m!==currentUser} size={16}/>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes — all visible */}
+          <div>
+            <div style={{fontSize:11,color:"#9A7A50",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Notes</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {MEMBERS.map(m=>{
+                const isMe = m === currentUser;
+                const note = book.notes?.[m];
+                return (
+                  <div key={m}>
+                    <div style={{fontSize:11,color:MC[m].bg,fontWeight:600,marginBottom:4}}>{m}{isMe?" (you)":""}</div>
+                    {isMe && editNote ? (
+                      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                        <textarea value={myNote} onChange={e=>setMyNote(e.target.value)}
+                          placeholder="Your thoughts…" rows={2}
+                          style={{background:"#160E05",border:"1px solid #5A3A20",borderRadius:8,color:"#F2E8D0",
+                            padding:"8px 11px",fontSize:13,resize:"vertical",outline:"none",width:"100%",fontFamily:"inherit"}}/>
+                        <div style={{display:"flex",gap:7}}>
+                          <button onClick={()=>{onSaveNote(book.id,myNote);setEditNote(false);}}
+                            style={{background:"#4A7C59",border:"none",color:"#E8F3EC",borderRadius:7,
+                              padding:"5px 13px",cursor:"pointer",fontSize:12,fontWeight:600}}>Save</button>
+                          <button onClick={()=>setEditNote(false)}
+                            style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",
+                              borderRadius:7,padding:"5px 13px",cursor:"pointer",fontSize:12}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div onClick={()=>isMe&&setEditNote(true)}
+                        style={{background:"#160E0570",border:`1px ${note?"solid":"dashed"} ${isMe?"#4A3020":"#2A1C0E"}`,
+                          borderRadius:8,padding:"8px 11px",cursor:isMe?"pointer":"default",minHeight:36,
+                          fontSize:13,color:note?"#C8A870":"#5A3A28",fontStyle:note?"normal":"italic",
+                          lineHeight:1.5}}>
+                        {note||(isMe?"Click to add your notes…":"No note yet")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Home Tab ─────────────────────────────────────────────────────────────────
+function HomeTab({ data, currentUser, setUser }) {
+  const totalRead = data.bookshelf.length;
+  const inQueue   = data.queue.length;
+  const current   = data.currentRead;
+
+  // Member stats
+  const memberStats = MEMBERS.map(m => {
+    const suggested = [...data.queue,...data.bookshelf].filter(b=>b.suggestedBy===m).length;
+    const rated = data.bookshelf.filter(b=>b.ratings?.[m]>0);
+    const avgRating = rated.length ? (rated.reduce((a,b)=>a+(b.ratings[m]||0),0)/rated.length).toFixed(1) : null;
+    return { name:m, suggested, avgRating, notes: data.bookshelf.filter(b=>b.notes?.[m]).length };
+  });
+
+  const StatBox = ({label, value, sub}) => (
+    <div style={{flex:1,background:"linear-gradient(135deg,#2A1C0E,#1E1408)",border:"1px solid #3A2A18",
+      borderRadius:12,padding:"16px 14px",textAlign:"center"}}>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,fontWeight:900,color:"#C9A030",lineHeight:1}}>{value}</div>
+      <div style={{fontSize:11,color:"#9A7A50",textTransform:"uppercase",letterSpacing:1.5,marginTop:4}}>{label}</div>
+      {sub && <div style={{fontSize:11,color:"#6A4A30",marginTop:3,fontStyle:"italic"}}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      {/* Hero */}
+      <div style={{background:"linear-gradient(135deg,#2E1E0C,#1E1408)",border:"1px solid #4A3020",
+        borderRadius:16,padding:"28px 24px",marginBottom:18,textAlign:"center",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%, #C9A03015 0%, transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:13,color:"#C9A030",
+          letterSpacing:5,textTransform:"uppercase",fontStyle:"italic",marginBottom:4}}>The</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:34,fontWeight:900,
+          color:"#F2E8D0",letterSpacing:-1,lineHeight:1,marginBottom:10}}>THIRD CHAPTER</div>
+        <div style={{fontSize:15,color:"#9A7A50",fontStyle:"italic",marginBottom:18}}>
+          turning pages &amp; spilling tea
+        </div>
+        <div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap"}}>
+          {MEMBERS.map(m=>(
+            <div key={m} style={{display:"flex",alignItems:"center",gap:7,
+              background:`${MC[m].bg}20`,border:`1px solid ${MC[m].bg}40`,
+              borderRadius:20,padding:"5px 14px"}}>
+              <MemberAvatar name={m} size={22}/>
+              <span style={{fontSize:13,color:MC[m].bg}}>{m}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Who's reading today */}
+      <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",border:"1px solid #4A3020",
+        borderRadius:14,padding:"18px 20px",marginBottom:18}}>
+        <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:14}}>
+          {currentUser ? `Reading as · ${currentUser}` : "Who's reading today?"}
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {MEMBERS.map(m=>{
+            const c=MC[m]; const active=currentUser===m;
+            return (
+              <button key={m} onClick={()=>setUser(active?null:m)}
+                style={{display:"flex",alignItems:"center",gap:8,
+                  background:active?`${c.bg}30`:`${c.bg}12`,
+                  border:`1.5px solid ${active?c.bg:`${c.bg}40`}`,
+                  borderRadius:24,padding:"7px 16px",cursor:"pointer",transition:"all .2s",flex:1,minWidth:100,justifyContent:"center"}}>
+                <MemberAvatar name={m} size={26}/>
+                <span style={{fontFamily:"'Playfair Display',serif",fontSize:14,fontWeight:active?700:400,
+                  color:active?"#F2E8D0":"#9A7A50"}}>{m}</span>
+                {active && <span style={{fontSize:10,color:c.bg}}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        {!currentUser && <div style={{fontSize:11,color:"#5A3A20",marginTop:10,fontStyle:"italic"}}>
+          Tap your name to add books, rate, and leave notes</div>}
+      </div>
+
+
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <StatBox label="Books Read" value={totalRead}/>
+        <StatBox label="In Queue" value={inQueue}/>
+        <StatBox label="Est." value="2026" sub="our first chapter"/>
+      </div>
+
+      {/* Currently reading preview */}
+      {current && (
+        <div style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",border:"1px solid #5A3A20",
+          borderRadius:12,padding:"15px 17px",marginBottom:18,display:"flex",gap:14,alignItems:"center"}}>
+          <CoverImg url={current.coverUrl} color={MC[current.suggestedBy]?.bg} size={44}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#C9A030",textTransform:"uppercase",marginBottom:4}}>Currently Reading</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:700,color:"#F2E8D0",
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{current.title}</div>
+            <div style={{fontSize:12,color:"#9A7A50"}}>{current.author}</div>
+          </div>
+          {current.startDate && <div style={{fontSize:11,color:cdColor(countdown(current.startDate).daysLeft),fontWeight:600,flexShrink:0}}>
+            {countdown(current.startDate).daysLeft}d left
+          </div>}
+        </div>
+      )}
+
+      {/* Member cards */}
+      <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:12}}>Member Stats</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:18}}>
+        {memberStats.map(m=>(
+          <div key={m.name} style={{background:"linear-gradient(135deg,#2A1C0E,#221508)",
+            border:`1px solid ${MC[m.name].bg}35`,borderRadius:12,padding:"13px 16px",
+            display:"flex",alignItems:"center",gap:14}}>
+            <MemberAvatar name={m.name} size={40}/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,fontWeight:700,color:"#F2E8D0"}}>{m.name}</div>
+              <div style={{fontSize:12,color:"#8A6A40",marginTop:2}}>
+                {m.suggested} book{m.suggested!==1?"s":""} suggested · {m.notes} note{m.notes!==1?"s":""}
+              </div>
+            </div>
+            {m.avgRating && <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontSize:13,color:"#C9A030",fontWeight:600}}>★ {m.avgRating}</div>
+              <div style={{fontSize:10,color:"#6A4A30"}}>avg rating</div>
+            </div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Fun about section */}
+      <div style={{background:"linear-gradient(135deg,#2A1C0E,#1E1408)",border:"1px solid #3A2A18",
+        borderRadius:12,padding:"18px 20px"}}>
+        <div style={{fontSize:11,color:"#9A7A50",letterSpacing:3,textTransform:"uppercase",marginBottom:12}}>About the Club</div>
+        <div style={{fontSize:15,color:"#C8A870",lineHeight:1.7,fontStyle:"italic"}}>
+          Three friends. One book. Infinite opinions about fictional characters.
+        </div>
+        <div style={{height:"1px",background:"#3A2A18",margin:"14px 0"}}/>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[
+            {e:"📅", t:"Meeting vibe", d:"Whenever the group chat says so"},
+            {e:"☕", t:"Official drink", d:"Matcha latte. Obviously."},
+            {e:"📏", t:"Reading target", d:"One book per month"},
+            {e:"🗳️", t:"Next pick", d:"Rotate whose turn it is to suggest"},
+            {e:"⭐", t:"Rating system", d:"Brutally honest 1–5 stars"},
+          ].map(r=>(
+            <div key={r.t} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{fontSize:16,flexShrink:0}}>{r.e}</span>
+              <div>
+                <span style={{fontSize:13,color:"#F2E8D0",fontWeight:600}}>{r.t}: </span>
+                <span style={{fontSize:13,color:"#9A7A50"}}>{r.d}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+function App() {
+  const [user, setUser]         = useState(null);
+  const [tab, setTab]           = useState("home");
+  const [data, setData]         = useState(DEFAULT);
+  const [loading, setLoading]   = useState(true);
+  const [syncing, setSyncing]   = useState(false);
+  const [syncErr, setSyncErr]   = useState(false);
+  const [showAdd, setShowAdd]   = useState(false);
+  const [showRead, setShowRead] = useState(false);
+  const [genreFilter, setGenreFilter] = useState("All");
+  const pollRef = useRef(null);
+  const saving  = useRef(false);
+
+  // Load on mount; re-sync from cloud when window regains focus
+  useEffect(()=>{
+    async function load() {
+      try {
+        const d = await window.cloudStorage.read();
+        if (d) setData(d);
+      } catch(e) { console.warn("Load error:", e); }
+      setLoading(false);
+    }
+    load();
+
+    // Only re-fetch on focus (no interval — saves bandwidth & Netlify credits)
+    const onFocus = async () => {
+      if (saving.current) return;
+      try {
+        const d = await window.cloudStorage.read();
+        if (d) { setData(d); setSyncErr(false); }
+      } catch { setSyncErr(true); }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  },[]);
+
+  const save = useCallback(async nd=>{
+    saving.current = true; setSyncing(true); setData(nd);
+    // localStorage write happens inside cloudStorage.write before any cloud call
+    // so data is always safe locally even if cloud fails
+    try { await window.cloudStorage.write(nd); setSyncErr(false); }
+    catch(e) {
+      // Cloud sync failed but data is saved locally — show warning, don't block
+      setSyncErr(true);
+      console.error("Cloud sync failed (data saved locally):", e.message);
+    }
+    setSyncing(false); saving.current = false;
+  },[]);
+
+  // Actions
+  const addToQueue   = (title,author,genre,coverUrl)=>save({...data,queue:[...data.queue,{id:Date.now(),title,author,genre,coverUrl,suggestedBy:user,addedDate:new Date().toISOString()}]});
+  const removeQueue  = id=>save({...data,queue:data.queue.filter(b=>b.id!==id)});
+  const makeCurrent  = book=>{ save({...data,currentRead:{...book,startDate:new Date().toISOString()},queue:data.queue.filter(b=>b.id!==book.id)}); setTab("current"); };
+  const markRead     = (rating,note)=>{ if(!data.currentRead)return; save({...data,currentRead:null,bookshelf:[{...data.currentRead,finishedDate:new Date().toISOString(),ratings:{...data.currentRead.ratings,[user]:rating},notes:{...(data.currentRead.notes||{}),[user]:note}},...data.bookshelf]}); setShowRead(false); };
+  const updateRating = (id,r)=>save({...data,bookshelf:data.bookshelf.map(b=>b.id===id?{...b,ratings:{...b.ratings,[user]:r}}:b)});
+  const updateNote   = (id,n)=>save({...data,bookshelf:data.bookshelf.map(b=>b.id===id?{...b,notes:{...(b.notes||{}),[user]:n}}:b)});
+
+  // Genre list from queue
+  const queueGenres = ["All",...new Set(data.queue.map(b=>b.genre).filter(Boolean))];
+  const filteredQueue = genreFilter==="All" ? data.queue : data.queue.filter(b=>b.genre===genreFilter);
+
+  const col = user ? MC[user] : { bg: "#C9A030" };
+
+  // ── Main app ─────────────────────────────────────────────────────────────────
+  return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#1C120A,#0E0802)"}}>
+
+      {/* Header */}
+      <div style={{borderBottom:"1px solid #3A2A18",padding:"12px 20px",display:"flex",
+        alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,
+        background:"rgba(14,8,2,0.92)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)"}}>
+        <button onClick={()=>setUser(null)} style={{display:"flex",alignItems:"center",gap:10,
+          background:"transparent",border:"none",cursor:"pointer",padding:0}}>
+          <span style={{fontSize:18}}>📖</span>
+          <div>
+            <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+              <span style={{fontFamily:"'Cormorant Garamond',serif",fontSize:11,fontStyle:"italic",color:"#C9A030"}}>The</span>
+              <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:900,color:"#F2E8D0",letterSpacing:-.5}}>THIRD CHAPTER</span>
+            </div>
+            <div style={{fontSize:9,letterSpacing:2.5,color:"#5A3A20",textTransform:"uppercase"}}>Book Club</div>
+          </div>
+        </button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {syncing && <span style={{fontSize:10,color:"#6A4A30",animation:"pulse 1s infinite"}}>syncing…</span>}
+          {syncErr && <span style={{fontSize:10,color:"#C43030",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block",verticalAlign:"middle",cursor:"pointer"}} title={window.cloudStorage.lastErr||"sync failed"}>⚠️ sync failed</span>}
+          {window.cloudStorage.isCloud && !syncing && !syncErr && <span style={{fontSize:10,color:"#4A7C59",opacity:.7}}>☁️</span>}
+          {user ? (
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,background:`${col.bg}1E`,
+                border:`1px solid ${col.bg}45`,borderRadius:18,padding:"4px 10px"}}>
+                <MemberAvatar name={user} size={20}/>
+                <span style={{fontSize:12,color:col.bg,fontWeight:600}}>{user}</span>
+              </div>
+              <button onClick={()=>{setUser(null);setTab("home");}} style={{background:"transparent",border:"1px solid #3A2A18",
+                color:"#7A5A30",borderRadius:8,padding:"4px 9px",cursor:"pointer",fontSize:11}}>Switch</button>
+            </div>
+          ) : (
+            <button onClick={()=>setTab("home")} style={{background:"#C9A03022",border:"1px solid #C9A03055",
+              color:"#C9A030",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+              Who's reading? →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid #3A2A18",padding:"0 16px",overflowX:"auto"}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{background:"transparent",border:"none",
+            borderBottom:tab===t.id?"2px solid #C9A030":"2px solid transparent",
+            color:tab===t.id?"#F2E8D0":"#6A4A28",padding:"12px 15px",cursor:"pointer",
+            fontSize:13,fontWeight:tab===t.id?600:400,display:"flex",alignItems:"center",gap:5,
+            transition:"color .2s",marginBottom:-1,whiteSpace:"nowrap"}}>
+            <span style={{fontSize:12}}>{t.icon}</span> {t.label}
+            {t.id==="queue"&&data.queue.length>0&&
+              <span style={{background:"#C9A030",color:"#1C120A",borderRadius:9,fontSize:10,padding:"0px 5px",fontWeight:700}}>{data.queue.length}</span>}
+            {t.id==="bookshelf"&&data.bookshelf.length>0&&
+              <span style={{background:"#4A7C59",color:"#E8F3EC",borderRadius:9,fontSize:10,padding:"0px 5px",fontWeight:700}}>{data.bookshelf.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div style={{padding:60,textAlign:"center",color:"#7A5A30",fontSize:15}}>Loading your library…</div>
+      ) : (
+        <div style={{padding:20,maxWidth:680,margin:"0 auto"}}>
+
+          {/* HOME */}
+          {tab==="home" && <HomeTab data={data} currentUser={user} setUser={setUser}/>}
+
+          {/* NOW READING */}
+          {tab==="current" && (
+            data.currentRead ? (
+              <div className="fade-in">
+                <div style={{background:"linear-gradient(135deg,#2E1E0C,#1E1408)",border:"1px solid #6A4A20",
+                  borderRadius:16,padding:24,marginBottom:16}}>
+                  <div style={{fontSize:10,letterSpacing:4,color:"#C9A030",textTransform:"uppercase",marginBottom:14}}>✦ Currently Reading</div>
+                  <div style={{display:"flex",gap:18,marginBottom:16}}>
+                    <CoverImg url={data.currentRead.coverUrl} color={col.bg} size={76}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:900,
+                        color:"#F2E8D0",lineHeight:1.2,marginBottom:6}}>{data.currentRead.title}</div>
+                      <div style={{fontSize:14,color:"#9A7A50",marginBottom:8}}>{data.currentRead.author}</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                        <span style={{fontSize:11,color:MC[data.currentRead.suggestedBy]?.bg||"#C9A030"}}>
+                          Suggested by {data.currentRead.suggestedBy}</span>
+                        {data.currentRead.genre && <GenrePill genre={data.currentRead.genre} small/>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Countdown */}
+                  {data.currentRead.startDate && <Countdown startDate={data.currentRead.startDate}/>}
+
+                  <div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:14}}>
+                    <button onClick={()=>{ if(!user){setTab("home");return;} setShowRead(true);}} style={{background:"#4A7C59",border:"none",color:"#E8F3EC",
+                      borderRadius:10,padding:"10px 18px",cursor:"pointer",fontSize:13,fontWeight:700}}>🎉 We Finished It!</button>
+                    <button onClick={()=>save({...data,currentRead:null,queue:[data.currentRead,...data.queue]})}
+                      style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",
+                        borderRadius:10,padding:"9px 15px",cursor:"pointer",fontSize:13}}>← Back to Queue</button>
+                  </div>
+                </div>
+                <div style={{background:"#221508",border:"1px solid #3A2A18",borderRadius:12,padding:"14px 17px"}}>
+                  <div style={{fontSize:10,letterSpacing:3,color:"#7A5A30",textTransform:"uppercase",marginBottom:10}}>Reading With</div>
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                    {MEMBERS.map(m=>(
+                      <div key={m} style={{display:"flex",alignItems:"center",gap:7}}>
+                        <MemberAvatar name={m} size={28}/>
+                        <span style={{fontSize:13,color:m===user?"#F2E8D0":"#8A6A40",fontWeight:m===user?600:400}}>{m}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="fade-in" style={{textAlign:"center",padding:"56px 20px"}}>
+                <div style={{fontSize:48,marginBottom:12}}>📭</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:21,color:"#8A6A40",marginBottom:7}}>Nothing selected yet</div>
+                <div style={{fontSize:14,color:"#5A3A20",marginBottom:22}}>Promote a book from the queue to start reading</div>
+                <button onClick={()=>setTab("queue")} style={{background:"#C9A030",border:"none",color:"#1C120A",
+                  borderRadius:10,padding:"11px 22px",cursor:"pointer",fontSize:14,fontWeight:700}}>Browse the Queue →</button>
+              </div>
+            )
+          )}
+
+          {/* QUEUE */}
+          {tab==="queue" && (
+            <div className="fade-in">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,color:"#F2E8D0"}}>Up Next</div>
+                  <div style={{fontSize:12,color:"#6A4A30",marginTop:2}}>{data.queue.length} book{data.queue.length!==1?"s":""} waiting</div>
+                </div>
+                <button onClick={()=>{ if(!user){setTab("home");return;} setShowAdd(true);}} style={{background:"#C9A030",border:"none",color:"#1C120A",
+                  borderRadius:10,padding:"8px 15px",cursor:"pointer",fontSize:13,fontWeight:700}}>+ Add Book</button>
+              </div>
+
+              {/* Genre filter */}
+              {queueGenres.length > 1 && (
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:16}}>
+                  {queueGenres.map(g=>(
+                    <GenrePill key={g} genre={g} active={genreFilter===g} onClick={()=>setGenreFilter(g)}/>
+                  ))}
+                </div>
+              )}
+
+              {filteredQueue.length===0 ? (
+                <div style={{textAlign:"center",padding:"44px 20px"}}>
+                  <div style={{fontSize:44,marginBottom:10}}>📋</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#8A6A40",marginBottom:6}}>
+                    {genreFilter==="All"?"Queue is empty":`No ${genreFilter} books in the queue`}</div>
+                  {genreFilter!=="All"
+                    ? <button onClick={()=>setGenreFilter("All")} style={{background:"transparent",border:"1px solid #5A3A20",color:"#9A7A50",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:13}}>Show All</button>
+                    : <div style={{fontSize:13,color:"#5A3A20"}}>Add some books you'd love to read together</div>}
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {filteredQueue.map(b=><QueueCard key={b.id} book={b} onMakeCurrent={makeCurrent} onRemove={removeQueue}/>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* BOOKSHELF */}
+          {tab==="bookshelf" && (
+            <div className="fade-in">
+              <div style={{marginBottom:16}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,color:"#F2E8D0"}}>Bookshelf</div>
+                <div style={{fontSize:12,color:"#6A4A30",marginTop:2}}>{data.bookshelf.length} book{data.bookshelf.length!==1?"s":""} finished together</div>
+              </div>
+              {data.bookshelf.length===0 ? (
+                <div style={{textAlign:"center",padding:"44px 20px"}}>
+                  <div style={{fontSize:44,marginBottom:10}}>🏛️</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:"#8A6A40",marginBottom:6}}>Your story begins here</div>
+                  <div style={{fontSize:13,color:"#5A3A20"}}>Finished books with ratings and notes will live here</div>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {data.bookshelf.map(b=><ShelfCard key={b.id} book={b} currentUser={user} onRate={updateRating} onSaveNote={updateNote}/>)}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {showAdd  && <AddModal currentUser={user} onAdd={addToQueue} onClose={()=>setShowAdd(false)}/>}
+      {showRead && data.currentRead && <MarkReadModal book={data.currentRead} currentUser={user} onConfirm={markRead} onClose={()=>setShowRead(false)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
